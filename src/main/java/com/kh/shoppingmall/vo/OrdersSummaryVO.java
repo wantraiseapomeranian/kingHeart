@@ -36,4 +36,8 @@ public class OrdersSummaryVO {
 	
 	// 주문 생성 시간
 	private Timestamp ordersCreatedAt;
+	
+	//상세 항목 상태
+	private int orderDetailNo;
+	private String detailStatus;
 }

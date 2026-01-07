@@ -24,34 +24,33 @@ public class CategoryService {
     private ProductCategoryMapDao productCategoryMapDao;
 
 
- // 1. 카테고리 추가 (관리자) - 자동 순서 계산 로직 추가
+ //카테고리 추가 (관리자)
     public void addCategory(CategoryDto categoryDto) {
         
         // 등록하려는 카테고리가 최상위(부모) 카테고리인지 확인 (parentCategoryNo가 null일 경우)
         if (categoryDto.getParentCategoryNo() == null) {
             
-            // 1. 현재 DB에 등록된 최상위 카테고리의 최대 순서 번호를 조회
-            //    (CategoryDao에 selectMaxCategoryOrder() 메서드가 구현되어 있어야 합니다.)
+            //현재 DB에 등록된 최상위 카테고리의 최대 순서 번호를 조회
             int maxOrder = categoryDao.selectMaxCategoryOrder();
             
-            // 2. 새로운 카테고리의 순서 번호는 MAX + 1로 자동 지정
+            //새로운 카테고리의 순서 번호는 MAX + 1로 자동 지정
             categoryDto.setCategoryOrder(maxOrder + 1);
         }
         
         categoryDao.insert(categoryDto);
     }
 
-    // 2. 전체 카테고리 목록 조회 (메뉴 구성용)
+    //전체 카테고리 목록 조회(메뉴 구성용)
     public List<CategoryDto> getAllCategories() {
         return categoryDao.selectList();
     }
 
-    // 3. 카테고리 정보 수정 (관리자)
+    //카테고리 정보 수정(관리자)
     public boolean updateCategory(CategoryDto categoryDto) {
         return categoryDao.update(categoryDto);
     }
 
-    // 4. 카테고리 삭제 (관리자 - 핵심 로직)
+    //카테고리 삭제(관리자)
     @Transactional
     public void deleteCategory(int categoryNo) {
         int childCount = categoryDao.countByParent(categoryNo);

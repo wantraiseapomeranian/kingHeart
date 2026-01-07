@@ -13,4 +13,5 @@ public class OrderDetailDto {
 	private int optionNo;
 	private int orderAmount;
 	private int pricePerItem;
+	private String detailStatus;
 }

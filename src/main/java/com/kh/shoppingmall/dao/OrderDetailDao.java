@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import com.kh.shoppingmall.dto.MemberDto;
 import com.kh.shoppingmall.dto.OrderDetailDto;
 import com.kh.shoppingmall.mapper.OrderDetailMapper;
 
@@ -23,9 +24,8 @@ public class OrderDetailDao {
 		return jdbcTemplate.queryForObject(sql, int.class);
 	}
 	
-	//jdbcTemplate.batchUpdate 를 사용해 여러 주문건을 한번의 주문으로 통일(예: 장바구니에 담아 묶음결제)
-	//이 때 리턴값은 int[]이 됨 값이 1이면 정상이고 0 또는 -2면 삽입 실패
-	//이 때 order_detail_no는  서비스 쪽 (예: AttachmentService)에서 넣어주는게 좋음 이유는 시퀸스라 별도로 값을 넣어야됨
+	//여러 주문건을 한번의 주문으로 통일
+	//리턴 값이 1이면 정상이고 0 또는 -2면 삽입 실패
 	public int[] batchInsert(List<OrderDetailDto> orderDetailList) {
 		String sql = "insert into order_detail("
 				+ "order_detail_no, order_no, "
@@ -48,7 +48,6 @@ public class OrderDetailDao {
 		return jdbcTemplate.batchUpdate(sql, paramsList);
 	}
 	
-	//일반적 insert 이건 장바구니에 담긴것도 넣으려면 여러번 사용해야됨
 	public void insert(OrderDetailDto orderDetailDto) {
 			String sql = "insert into order_detail("
 			+ "order_detail_no, order_no, "
@@ -77,16 +76,35 @@ public class OrderDetailDao {
             return 0; // 삭제할 것이 없음
         }
         
-        // 1. IN 절에 들어갈 ? プレースホルダー 생성 (예: "?,?,?")
+        //IN 절에 들어갈 ? 생성
         String placeholders = String.join(",", Collections.nCopies(optionNoList.size(), "?"));
 
-        // 2. SQL 쿼리 생성
+        //SQL 쿼리 생성
         String sql = "DELETE FROM order_detail WHERE option_no IN (" + placeholders + ")";
         
-        // 3. List<Integer>를 Object[] 배열로 변환
+        //List<Integer>를 Object[] 배열로 변환
         Object[] params = optionNoList.toArray();
         
         return jdbcTemplate.update(sql, params);
     }
+	
+	//주문 상세 조회
+	public OrderDetailDto selectOne(int orderDetailNo) {
+		String sql = "select * from order_detail where order_detail_no = ?";
+		
+		Object[] params = {orderDetailNo};
+		
+		List<OrderDetailDto> list = jdbcTemplate.query(sql, orderDetailMapper, params);
+		
+		return list.isEmpty() ? null : list.get(0);
+	}
+	
+	//부분 취소 시 상태 수정
+	public boolean updateStatus(int orderDetailNo, String status) {
+	    String sql = "update order_detail set detail_status = ? where order_detail_no = ?";
+	    Object[] params = { status, orderDetailNo };
+	    
+	    return jdbcTemplate.update(sql, params) > 0;
+	}
 	
 }

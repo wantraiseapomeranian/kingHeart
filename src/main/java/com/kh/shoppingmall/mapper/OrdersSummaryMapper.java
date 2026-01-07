@@ -30,6 +30,8 @@ public class OrdersSummaryMapper implements RowMapper<OrdersSummaryVO> {
 					.thumbnailName(rs.getString("thumbnail_name"))
 					.productThumbnailNo(rs.getInt("product_thumbnail_no"))
 					.ordersCreatedAt(rs.getTimestamp("orders_created_at"))
+					.orderDetailNo(rs.getInt("order_detail_no"))
+					.detailStatus(rs.getString("detail_status"))
 				.build();
 	}
 }

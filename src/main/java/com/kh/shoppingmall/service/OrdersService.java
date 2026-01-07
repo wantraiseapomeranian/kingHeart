@@ -26,6 +26,8 @@ import com.kh.shoppingmall.vo.OrderListVO;
 import com.kh.shoppingmall.vo.OrdersSummaryVO;
 import com.kh.shoppingmall.vo.kakaopay.KakaoPayApproveRequestVO;
 import com.kh.shoppingmall.vo.kakaopay.KakaoPayApproveResponseVO;
+import com.kh.shoppingmall.vo.kakaopay.KakaoPayCancelRequestVO;
+import com.kh.shoppingmall.vo.kakaopay.KakaoPayCancelResponseVO;
 
 import jakarta.servlet.http.HttpSession;
 
@@ -50,15 +52,10 @@ public class OrdersService {
 	@Autowired
 	private MemberService memberService;
 
-	// 장바구니에 담은 제품의 가격이 변동될 경우 다시 조회하는 경우 사용
 	@Autowired
 	private ProductDao productDao;
 	
 	//결제 관련
-	@Autowired
-    private PaymentDao paymentDao;
-    @Autowired
-    private PaymentDetailDao paymentDetailDao;
     @Autowired
     private KakaoPayService kakaoPayService;
 
@@ -88,37 +85,30 @@ public class OrdersService {
 		//카카오페이 승인 요청
 		KakaoPayApproveResponseVO responseVO = kakaoPayService.approve(approveRequest);
 		
+		//추가 정보 넣기
+		ordersDto.setOrdersTid(responseVO.getTid());
+	    ordersDto.setOrdersItemName(responseVO.getItemName());
+	    ordersDto.setOrdersTotalPrice(responseVO.getAmount().getTotal());
+	    ordersDto.setOrdersRemainPrice(responseVO.getAmount().getTotal());
+		
 		// 주문하는 사람 조회
 		String ordersId = (String) session.getAttribute("loginId");
+		
+		//주문자 아이디 설정
 		ordersDto.setOrdersId(ordersId);
 
 		// 주문번호 받아오기
 		int ordersNo = ordersDao.sequence();
 		ordersDto.setOrdersNo(ordersNo);
-		
-		//주문자 아이디 설정
-		ordersDto.setOrdersId(ordersId);
 
 		// 주문 상태 설정
 		ordersDto.setOrdersStatus("결제완료");
 
 		// 총 금액 계산 로직
-		int totalPrice = calculateTotalPrice(cartItems); // 별도 메소드로 계산
-		ordersDto.setOrdersTotalPrice(totalPrice);
+//		int totalPrice = calculateTotalPrice(cartItems); // 별도 메소드로 계산
 
 		// orders 테이블에 insert
 		ordersDao.insert(ordersDto);
-		
-		//결제 정보 생성
-		long paymentNo = paymentDao.sequence();
-	    paymentDao.insert(PaymentDto.builder()
-	            .paymentNo(paymentNo)
-	            .paymentOwner(ordersId)
-	            .paymentTid(responseVO.getTid())
-	            .paymentName(responseVO.getItemName())
-	            .paymentTotal(responseVO.getAmount().getTotal()) // 카카오가 준 금액
-	            .paymentRemain(responseVO.getAmount().getTotal())
-	            .build());
 
 		//상세 내역 처리 및 재고 차감
 		List<OrderDetailDto> orderDetailList = new ArrayList<>();
@@ -147,16 +137,6 @@ public class OrdersService {
 			
 			// 리스트에 추가
 	        orderDetailList.add(orderDetailDto);
-	        
-	        //결제 영수증 상세 데이터
-	        paymentDetailDao.insert(PaymentDetailDto.builder()
-	                .paymentDetailNo(paymentDetailDao.sequence())
-	                .paymentDetailOrigin(paymentNo)
-	                .paymentDetailItemNo((long)cartItem.getOptionNo()) // SKU 옵션번호 매핑
-	                .paymentDetailItemName(cartItem.getProductName() + " [" + cartItem.getOptionName() + "]")
-	                .paymentDetailItemPrice(cartItem.getProductPrice())
-	                .paymentDetailQty(cartItem.getCartAmount())
-	                .build());
 	        
 			//재고 차감
 			boolean stockUpdated = productOptionDao.updateStock(cartItem.getOptionNo(), -cartItem.getCartAmount());
@@ -213,11 +193,10 @@ public class OrdersService {
 	
 	//memberId로 주문 내역 가져오기
 	public List<OrderListVO> getOrderListSummaryByMember(String memberId) {
-	    // 단순 조회이므로 DAO 호출만으로 충분
 	    return orderListDao.selectList(memberId);
 	}
 	
-	//주문 취소시 로직 작성
+	//전체 주문 취소
 	@Transactional
 	public boolean cancelOrder(int ordersNo, String memberId) {
 		System.out.println("주문 취소 시작: " + ordersNo);
@@ -233,24 +212,95 @@ public class OrdersService {
 	    if (!order.getOrdersStatus().equals("결제완료") && !order.getOrdersStatus().equals("배송준비중")) {
 	        return false; // 취소 불가 상태
 	    }
+	    
+	    KakaoPayCancelRequestVO requestVO = KakaoPayCancelRequestVO.builder()
+                .tid(order.getOrdersTid())// DB에 저장된 거래번호(TID)
+                .cancelAmount(order.getOrdersTotalPrice()) // 결제 금액
+                .build();
+	    
+	    try {
+            // 작성하신 WebClient 기반의 cancel 호출
+            KakaoPayCancelResponseVO responseVO = kakaoPayService.cancel(requestVO);
 
-	    //주문 상세 내역 조회
+            //응답이 없는 경우
+            if (responseVO == null) {
+                throw new RuntimeException("카카오페이 결제 취소 API 응답 실패");
+            }
+            
+            //재고 복구 로직
+            List<OrderDetailDto> details = orderDetailDao.selectListByOrdersNo(ordersNo);
+    	    for (OrderDetailDto detail : details) {
+    	    	System.out.println("optionNo : " + detail.getOptionNo() +  "detail" + detail.getOrderAmount());
+    	        boolean stockUpdated = productOptionDao.updateStock(detail.getOptionNo(), detail.getOrderAmount()); // 수량만큼 다시 더함
+    	        System.out.println("stockUpdated" + stockUpdated);
+    	        if (!stockUpdated) {
+    	            // 재고 복구 실패 시 롤백
+    	            throw new RuntimeException("재고 복구 중 오류 발생: 옵션 " + detail.getOptionNo());
+    	        }
+    	    }
+
+            //주문 상태 변경
+            return ordersDao.update(ordersNo, "주문취소");
+
+        } catch (Exception e) {
+            System.err.println("주문 취소 실패: " + e.getMessage());
+            throw new RuntimeException("결제 취소 처리 중 오류가 발생했습니다.", e);
+        }
+	}
+	
+	//전체 취소 되어있는지 조회
+	private void checkAndCloseOrder(int ordersNo) {
+	    //해당 주문의 모든 상세 내역을 가져옵니다.
 	    List<OrderDetailDto> details = orderDetailDao.selectListByOrdersNo(ordersNo);
 
-	    //재고 복구
+	    //모든 항목이 '취소완료' 상태인지 확인합니다.
+	    boolean allCancelled = true;
 	    for (OrderDetailDto detail : details) {
-	    	System.out.println("optionNo : " + detail.getOptionNo() +  "detail" + detail.getOrderAmount());
-	        boolean stockUpdated = productOptionDao.updateStock(detail.getOptionNo(), detail.getOrderAmount()); // 수량만큼 다시 더함
-	        System.out.println("stockUpdated" + stockUpdated);
-	        if (!stockUpdated) {
-	            // 재고 복구 실패 시 롤백
-	            throw new RuntimeException("재고 복구 중 오류 발생: 옵션 " + detail.getOptionNo());
+	        // 단 하나라도 '결제완료'나 다른 상태가 있다면 전체 취소가 아닙니다.
+	        if (!"취소완료".equals(detail.getDetailStatus())) {
+	            allCancelled = false;
+	            break;
 	        }
 	    }
 
-	    //주문 상태 변경
-	    return ordersDao.update(ordersNo, "주문취소");
-	    
+	    //만약 모든 항목이 취소되었다면 메인 주문 상태를 변경합니다.
+	    if (allCancelled) {
+	        ordersDao.update(ordersNo, "주문취소");
+	        System.out.println("주문 번호 " + ordersNo + "의 모든 상품이 취소되어 전체 주문을 취소 처리했습니다.");
+	    }
 	}
+	
+	//부분 취소
+	@Transactional
+	public boolean cancelOrderDetail(int detailNo, String memberId) {
+		
+	    //상세 정보 조회
+	    OrderDetailDto detail = orderDetailDao.selectOne(detailNo);
+	    OrdersDto order = ordersDao.selectOneByOrderNo(detail.getOrderNo());
 
+	    //카카오페이 부분 취소 API 호출
+	    KakaoPayCancelRequestVO requestVO = KakaoPayCancelRequestVO.builder()
+	            .tid(order.getOrdersTid())
+	            .cancelAmount(detail.getPricePerItem() * detail.getOrderAmount()) // 해당 상품만큼만
+	            .build();
+	    
+	    KakaoPayCancelResponseVO response = kakaoPayService.cancel(requestVO);
+
+	    if (response != null) {
+	        //해당 상세 항목만 상태 변경
+	        orderDetailDao.updateStatus(detailNo, "취소완료");
+	        
+	        //메인 주문 테이블의 잔액 차감
+	        ordersDao.updateRemainPrice(order.getOrdersNo(), response.getCancelAvailableAmount().getTotal());
+	        
+	        //해당 상품의 재고만 복구
+	        productOptionDao.updateStock(detail.getOptionNo(), detail.getOrderAmount());
+	        
+	        //만약 모든 상세 항목이 취소되었다면 전체 주문 상태도 '주문취소'로 변경
+	        checkAndCloseOrder(order.getOrdersNo());
+	        
+	        return true;
+	    }
+	    return false;
+	}
 }

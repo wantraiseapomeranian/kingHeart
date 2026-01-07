@@ -23,6 +23,11 @@ public class OrdersMapper implements RowMapper<OrdersDto> {
 					.ordersShippingAddress2(rs.getString("orders_shippingaddress2"))
 					.ordersStatus(rs.getString("orders_status"))
 					.ordersCreatedAt(rs.getTimestamp("orders_created_at"))
+					//카카오페이 추가
+					.ordersTid(rs.getString("orders_tid"))
+                    .ordersItemName(rs.getString("orders_item_name"))
+                    .ordersRemainPrice(rs.getInt("orders_remain_price"))
+					
 				.build();
 	}
 }

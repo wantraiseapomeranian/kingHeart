@@ -20,6 +20,7 @@ public class OrderDetailMapper implements RowMapper<OrderDetailDto>{
 				.optionNo(rs.getInt("option_no"))
 				.orderAmount(rs.getInt("order_amount"))
 				.pricePerItem(rs.getInt("price_per_item"))
+				.detailStatus(rs.getString("detail_status"))
 			.build();
 	}
 	

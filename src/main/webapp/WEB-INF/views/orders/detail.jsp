@@ -5,6 +5,16 @@
 <%-- 템플릿 상단 include --%>
 <jsp:include page="/WEB-INF/views/template/header.jsp"></jsp:include>
 
+<script>
+    const urlParams = new URLSearchParams(window.location.search);
+    <c:if test="${not empty message}">
+        alert("${message}");
+    </c:if>
+    <c:if test="${not empty error}">
+        alert("${error}");
+    </c:if>
+</script>
+
 <div class="container">
 	<div class="cell center">
     	<h2>주문 상세 내역</h2>
@@ -37,6 +47,7 @@
                         <th style="padding: 10px; text-align: right;">수량</th>
                         <th style="padding: 10px; text-align: right;">상품 금액</th>
                         <th style="padding: 10px; text-align: right;">합계</th>
+                        <th style="padding: 10px; text-align: center;">상태/관리</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -56,6 +67,29 @@
                             <td style="padding: 10px; text-align: right;">${item.orderAmount}</td>
                             <td style="padding: 10px; text-align: right;"><fmt:formatNumber value="${item.pricePerItem}" type="currency"/> 원</td>
                             <td style="padding: 10px; text-align: right;"><fmt:formatNumber value="${item.pricePerItem * item.orderAmount}" type="currency"/> 원</td>
+                        
+                        	<td style="padding: 10px; text-align: center;">
+                                <c:choose>
+                                    <%-- 이미 취소된 상품인 경우 --%>
+                                    <c:when test="${item.detailStatus == '취소완료'}">
+                                        <span style="color: #ff4d4d; font-weight: bold;">취소완료</span>
+                                    </c:when>
+                                    
+                                    <%-- 결제완료 상태이며 전체 주문이 취소 가능할 때만 버튼 노출 --%>
+                                    <c:when test="${(orderInfo.ordersStatus == '결제완료' || orderInfo.ordersStatus == '배송준비중') && item.detailStatus == '결제완료'}">
+                                        <form action="cancel/item" method="post" onsubmit="return confirm('이 상품을 취소하시겠습니까?');">
+                                            <input type="hidden" name="orderDetailNo" value="${item.orderDetailNo}">
+                                            <input type="hidden" name="ordersNo" value="${orderInfo.ordersNo}">
+                                            <button type="submit" style="padding: 5px 10px; background: #666; color: #fff; border: none; cursor: pointer; border-radius: 3px;">상품 취소</button>
+                                        </form>
+                                    </c:when>
+                                    
+                                    <%-- 그 외 상태 (배송중 등) --%>
+                                    <c:otherwise>
+                                        <span>${item.detailStatus}</span>
+                                    </c:otherwise>
+                                </c:choose>
+                            </td>
                         </tr>
                     </c:forEach>
                 </tbody>

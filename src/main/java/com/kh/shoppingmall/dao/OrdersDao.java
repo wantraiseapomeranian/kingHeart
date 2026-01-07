@@ -27,20 +27,24 @@ public class OrdersDao {
     } 
     
     public void insert(OrdersDto ordersDto) {
-        String sql = "insert into orders("
+    	String sql = "insert into orders("
                 + "orders_no, orders_id, orders_totalprice, "
                 + "orders_recipient, orders_recipientcontact, "
                 + "orders_shippingpost, "
                 + "orders_shippingaddress1, orders_shippingaddress2, "
-                + "orders_status"
-                + ") values(?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                + "orders_status, "
+                + "orders_tid, orders_item_name, orders_remain_price"
+                + ") values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         
         Object[] params = {
             ordersDto.getOrdersNo(), ordersDto.getOrdersId(), ordersDto.getOrdersTotalPrice(), 
             ordersDto.getOrdersRecipient(), ordersDto.getOrdersRecipientContact(), 
             ordersDto.getOrdersShippingPost(), 
             ordersDto.getOrdersShippingAddress1(), ordersDto.getOrdersShippingAddress2(), 
-            ordersDto.getOrdersStatus()
+            ordersDto.getOrdersStatus(),
+            ordersDto.getOrdersTid(),
+            ordersDto.getOrdersItemName(),
+            ordersDto.getOrdersRemainPrice()
         };
         
         jdbcTemplate.update(sql, params);
@@ -72,7 +76,7 @@ public class OrdersDao {
     }
     
     public boolean update(int ordersNo, String ordersStatus) {
-        String sql = "update orders set orders_status = ? where orders_no = ?";
+        String sql = "update orders set orders_status = ?, orders_remain_price = 0 where orders_no = ?";
         Object[] params = { ordersStatus, ordersNo };
         return jdbcTemplate.update(sql, params) > 0;
     }
@@ -87,5 +91,13 @@ public class OrdersDao {
     public List<OrdersSummaryVO> selectListAll() {
         String sql = "SELECT * FROM order_summary ORDER BY orders_no DESC";
         return jdbcTemplate.query(sql, ordersSummaryMapper);
+    }
+    
+    //부분 취소 시 남은 금액 업데이트
+    public boolean updateRemainPrice(int ordersNo, int remainPrice) {
+        String sql = "update orders set orders_remain_price = ? where orders_no = ?";
+        Object[] params = { remainPrice, ordersNo };
+        
+        return jdbcTemplate.update(sql, params) > 0;
     }
 }

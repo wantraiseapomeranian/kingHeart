@@ -18,6 +18,11 @@ public class OrdersDto {
     private String ordersStatus;
     private Timestamp ordersCreatedAt;
     
+    //카카오페이
+    private String ordersTid;
+    private String ordersItemName;
+    private int ordersRemainPrice;
+    
     //체크박스 값 받는 필드
     private boolean saveAddressAsDefault;
 }

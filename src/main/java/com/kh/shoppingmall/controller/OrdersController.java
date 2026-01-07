@@ -13,6 +13,7 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -45,10 +46,13 @@ public class OrdersController {
 
 	@Autowired
 	private WishlistService wishlistService;
+	
 	@Autowired
 	private OrdersService ordersService;
+	
 	@Autowired
 	private CartService cartService;
+	
 	@Autowired
     private KakaoPayService kakaoPayService;
 
@@ -84,18 +88,18 @@ public class OrdersController {
 
 	    DayOfWeek dayOfWeek = estimatedDate.getDayOfWeek(); //요일 구하기
 
-	    // 4. 주말 조정
+	    //주말 조정
 	    if (dayOfWeek == DayOfWeek.SATURDAY) { // 토요일이면 +2일
 	        estimatedDate = estimatedDate.plusDays(2);
 	    } else if (dayOfWeek == DayOfWeek.SUNDAY) { // 일요일이면 +1일
 	        estimatedDate = estimatedDate.plusDays(1);
 	    }
 
-	    // 5. 날짜 포맷
+	    //날짜 포맷
 	    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM월 dd일(E)", Locale.KOREAN);
 	    String formattedDeliveryDate = estimatedDate.format(formatter);
 
-	    // 6. 모델에 추가
+	    //모델에 추가
 	    model.addAttribute("estimatedDeliveryDate", formattedDeliveryDate);
 	    
 		return "/WEB-INF/views/orders/cart.jsp";
@@ -168,8 +172,10 @@ public class OrdersController {
 		return "redirect:" + response.getNextRedirectPcUrl();
 	}
 	
-	@GetMapping("/payment/success")
-	public String paymentSuccess(@RequestParam String pg_token, HttpSession session) {
+	@GetMapping("/payment/success/{partnerOrderId}")
+	public String paymentSuccess(
+			@PathVariable String partnerOrderId, @RequestParam String pg_token, HttpSession session
+						) {
 		
 		//세션에서 저장해둔 정보 꺼내기
 		KakaoPayApproveRequestVO approveRequest = (KakaoPayApproveRequestVO) session.getAttribute("approve");
@@ -201,7 +207,7 @@ public class OrdersController {
 	public String paymentCancel(HttpSession session) {
 		session.removeAttribute("approve");
 		session.removeAttribute("ordersDto");
-		return "redirect:/orders/cart?status=cancel";
+		return "/WEB-INF/views/orders/payCancel.jsp";
 	}
 	
 	//결제 실패
@@ -209,7 +215,7 @@ public class OrdersController {
 	public String paymentFail(HttpSession session) {
 		session.removeAttribute("approve");
 		session.removeAttribute("ordersDto");
-		return "redirect:/orders/cart?status=fail";
+		return "/WEB-INF/views/orders/payFail.jsp";
 	}
 
 	// 결제 완료 페이지
@@ -272,7 +278,7 @@ public class OrdersController {
 		return "/WEB-INF/views/orders/detail.jsp";
 	}
 	
-	//주문 취소 메소드
+	//주문 전체 취소 메소드
 	@PostMapping("/cancel")
 	public String cancel(@RequestParam int ordersNo, 
 				HttpSession session, RedirectAttributes redirectAttributes
@@ -297,4 +303,33 @@ public class OrdersController {
 	    return "redirect:/orders/list"; // 주문 내역 페이지로 리다이렉트
 	}
 	
+	//부분 취소
+	@PostMapping("/cancel/item")
+	public String cancelItem(
+	    @RequestParam int orderDetailNo,
+	    @RequestParam int ordersNo,
+	    HttpSession session, 
+	    RedirectAttributes redirectAttributes
+	) {
+	    String memberId = (String) session.getAttribute("loginId");
+	    if (memberId == null) {
+	        return "redirect:/member/login";
+	    }
+
+	    try {
+	        // 서비스의 부분 취소 로직 호출
+	        boolean success = ordersService.cancelOrderDetail(orderDetailNo, memberId);
+	        
+	        if (success) {
+	            redirectAttributes.addFlashAttribute("message", "선택하신 상품이 취소되었습니다.");
+	        } else {
+	            redirectAttributes.addFlashAttribute("error", "상품 취소에 실패했습니다.");
+	        }
+	    } catch (Exception e) {
+	        redirectAttributes.addFlashAttribute("error", "취소 처리 중 오류가 발생했습니다.");
+	    }
+
+	    //상세 페이지로 리다이렉트
+	    return "redirect:/orders/detail?ordersNo=" + ordersNo;
+	}
 }
