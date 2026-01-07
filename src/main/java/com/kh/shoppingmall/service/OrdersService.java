@@ -118,20 +118,20 @@ public class OrdersService {
 			if (product == null)
 				throw new RuntimeException("상품 가격 정보를 찾을 수 없습니다: " + cartItem.getProductNo());
 
-			// orderDetailDto 생성
+			//orderDetailDto 생성
 			OrderDetailDto orderDetailDto = OrderDetailDto.builder()
-					// 생성된 시퀀스로 order_detail_no insert
+					//생성된 시퀀스로 order_detail_no insert
 	                .orderDetailNo(orderDetailDao.sequence())
-	                // 주문번호 설정
+	                //주문번호 설정
 	                .orderNo(ordersNo)
-	             // CartDto의 정보를 OrderDetailDto로 복사
+	                //CartDto의 정보를 OrderDetailDto로 복사
 	                .productNo(cartItem.getProductNo())
 	                .optionNo(cartItem.getOptionNo())
 	                .orderAmount(cartItem.getCartAmount())
 	                .pricePerItem(cartItem.getProductPrice())
 	                .build();
 			
-			// 리스트에 추가
+			//리스트에 추가
 	        orderDetailList.add(orderDetailDto);
 	        
 			//재고 차감
@@ -147,11 +147,11 @@ public class OrdersService {
 		//장바구니 비우기
 		cartDao.deleteByMemberId(ordersId); 
 		
-		if (ordersDto.isSaveAddressAsDefault()) { // 체크박스가 체크되었다면
+		if (ordersDto.isSaveAddressAsDefault()) { //체크박스가 체크되었다면
 	        try {
 	            // MemberDto 업데이트
 	            MemberDto memberDto = new MemberDto();
-	            memberDto.setMemberId(ordersId); // 업데이트 대상 ID 설정
+	            memberDto.setMemberId(ordersId); //업데이트 대상 ID 설정
 	          
 	            memberDto.setMemberName(ordersDto.getOrdersRecipient());
 	            memberDto.setMemberContact(ordersDto.getOrdersRecipientContact());
@@ -168,7 +168,7 @@ public class OrdersService {
 	        }
 	    }
 
-		// 생성된 주문 번호 반환
+		//생성된 주문 번호 반환
 		return ordersNo; 
 	}
 	
