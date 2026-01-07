@@ -11,6 +11,7 @@ Spring Boot를 기반으로 구축된 온라인 쇼핑몰 플랫폼입니다. �
 ### Backend
 - **Java 21**
 - **Spring Boot 3.5.6**
+- **Spring WebFlux WebClient** (카카오페이 API 연동)
 - **Oracle Database** (ojdbc11)
 - **Spring Boot Mail Sender** (이메일 인증 및 알림)
 - **JSoup** (HTML 파싱 및 처리)
@@ -51,7 +52,7 @@ Spring Boot를 기반으로 구축된 온라인 쇼핑몰 플랫폼입니다. �
 - **주문:**
   - 장바구니 추가/삭제/수정
   - 위시리스트 추가/삭제
-  - 상품 주문 및 결제
+  - 상품 주문 및 결제 (카카오페이 승인/취소 포함)
   - 주문 내역 조회
   - 주문 상세 정보 확인
 - **리뷰:**
@@ -177,10 +178,20 @@ src/main/java/com/kh/shoppingmall/
      spring.mail.properties.mail.smtp.starttls.enable=true
      ```
 
-2. **데이터베이스 스키마 생성:**
+2. **카카오페이 설정:**
+   - `.env` 또는 `application.properties`에 가맹점 정보를 추가합니다.
+     ```properties
+     # 카카오페이 가맹점 정보
+     custom.kakaopay.cid=TC0ONETIME          # 테스트 CID 또는 발급받은 CID
+     custom.kakaopay.secret-key=your_secret   # 관리자 페이지에서 발급받은 Secret Key
+     ```
+   - 카카오페이 관리자센터에서 **허용 도메인**에 서비스 도메인/포트(`http://localhost:8080` 등)를 등록하세요.
+   - 리다이렉트 URL은 현재 요청 경로에 `/success/{주문번호}`, `/cancel/{주문번호}`, `/fail/{주문번호}`가 자동으로 붙으므로, 등록 도메인에 포함되도록 합니다.
+
+3. **데이터베이스 스키마 생성:**
    - `TABLE_DETAILS.md` 파일의 SQL 스크립트를 실행하여 테이블을 생성합니다.
 
-3. **프로젝트 실행:**
+4. **프로젝트 실행:**
    - IDE(Eclipse, IntelliJ 등)에서 프로젝트를 가져와 실행합니다.
    - 또는, 프로젝트 루트 디렉터리에서 아래 명령어를 실행합니다.
      ```shell
@@ -191,7 +202,7 @@ src/main/java/com/kh/shoppingmall/
      ./mvnw spring-boot:run
      ```
 
-4. **접속:**
+5. **접속:**
    - 웹 브라우저에서 `http://localhost:8080`으로 접속합니다.
 
 ## 📝 주요 특징
@@ -203,3 +214,15 @@ src/main/java/com/kh/shoppingmall/
 - **이메일 인증**: 회원가입 및 비밀번호 찾기 시 이메일 인증 기능
 - **파일 업로드**: 상품 이미지, 리뷰 이미지 등 멀티파트 파일 업로드 지원
 - **예외 처리**: 전역 예외 처리 및 커스텀 예외를 통한 안정적인 에러 핸들링
+- **카카오페이 실결제 연동**: WebClient 기반 결제 준비/승인/조회/취소 API 구현 및 주문/재고/환불 로직과 연결
+
+## 💳 카카오페이 결제 흐름
+
+- **준비(ready)**: `/orders/payment` POST에서 장바구니 금액/상품명을 기반으로 카카오페이 `ready` 호출 → `tid`와 결제 페이지 URL 수신 후 리다이렉트.
+- **승인(approve)**: 결제 성공 리다이렉트(`/orders/payment/success/{orderId}`) 시 `pg_token`으로 승인 API 호출. 응답 `tid`, 결제 금액, 상품명을 주문 엔터티에 저장하고 상태를 `결제완료`로 설정.
+- **주문/재고 처리**: 승인 성공 시
+  - 주문/주문상세 insert 및 옵션 재고 차감
+  - 장바구니 비우기
+  - 사용자가 선택한 경우 배송지 정보를 회원 기본 배송지로 업데이트
+- **취소(cancel)**: `ordersNo` 기준 전체 주문 취소 시 카카오페이 취소 API 호출 → 성공 시 재고 복구, 주문 상태를 `주문취소`로 변경.
+- **DB 필드**: `orders.orders_tid`(카카오페이 거래번호), `orders_total_price`, `orders_remain_price` 등을 저장해 결제/환불 기준으로 사용.
