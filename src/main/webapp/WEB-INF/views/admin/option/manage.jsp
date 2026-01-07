@@ -8,44 +8,82 @@
 <script>
 $(function() {
     var skuIndex = ${optionList.size()}; // 기존 목록 수에 이어서 인덱스 시작
+	
+ 	//옵션 정의 칸 추가 버튼
+    $("#btn-add-option-item").on("click", function() {
+        var html = 
+            '<div class="option-item cell flex-box mt-10" style="gap: 10px;">' +
+                '<input type="text" class="field opt-name" placeholder="옵션 이름 (예: 색상)">' +
+                '<input type="text" class="field flex-fill opt-values" placeholder="옵션 값 (콤마로 구분)">' +
+                '<button type="button" class="btn btn-neutral btn-remove-option">X</button>' +
+            '</div>';
+        $("#option-definition-container").append(html);
+    });
 
-    // "조합 생성하기" 버튼 클릭
+    //옵션 정의 칸 삭제
+    $("#option-definition-container").on("click", ".btn-remove-option", function() {
+        $(this).closest(".option-item").remove();
+    });
+    
+    //조합 생성하기 버튼
     $("#generate-sku-btn").on("click", function() {
-        var name1 = $("#option1-name").val().trim(); // 예: "색상"
-        var values1 = $("#option1-values").val().trim().split(',')
-                        .map(s => s.trim()).filter(s => s); // ["빨강", "파랑"]
-        
-        var name2 = $("#option2-name").val().trim(); // 예: "사이즈"
-        var values2 = $("#option2-values").val().trim().split(',')
-                        .map(s => s.trim()).filter(s => s); // ["S", "M"]
+        var allOptions = []; // 모든 옵션 데이터 담기
 
-        if (values1.length === 0) {
-            alert("옵션 1 값을 콤마로 구분하여 입력하세요.");
+        $(".option-item").each(function() {
+            var name = $(this).find(".opt-name").val().trim();
+            var values = $(this).find(".opt-values").val().trim().split(',')
+                            .map(s => s.trim()).filter(s => s);
+            
+            if (values.length > 0) {
+                allOptions.push({ name: name, values: values });
+            }
+        });
+
+        if (allOptions.length === 0) {
+            alert("최소 하나 이상의 옵션 값을 입력하세요.");
             return;
         }
 
-        // 1. 옵션이 1개일 경우 (예: 신발 사이즈)
-        if (values2.length === 0) {
-            values1.forEach(function(val1) {
-                var skuName = (name1 ? name1 + ": " : "") + val1; // 예: "사이저: 250" 또는 "250"
-                addSkuRow(skuName, 0);
-            });
-        } 
-        // 2. 옵션이 2개일 경우 (조합 생성)
-        else {
-            values1.forEach(function(val1) {
-                values2.forEach(function(val2) {
-                    // 예: "색상: 빨강 / 사이즈: S"
-                    var skuName = (name1 ? name1 + ": " : "") + val1 + 
-                                  " / " + 
-                                  (name2 ? name2 + ": " : "") + val2;
-                    addSkuRow(skuName, 0);
-                });
-            });
+        // 재고 초기화 확인
+        if($("#sku-table-body tr").length > 0) {
+            if(!confirm("기존에 생성된 조합이 삭제됩니다. 계속하시겠습니까?")) return;
+            $("#sku-table-body").empty();
+            skuIndex = 0;
         }
+
+        // 데카르트 곱 알고리즘으로 조합 생성
+        var combinations = generatePowerSet(allOptions);
+        
+        combinations.forEach(function(combinedName) {
+            addSkuRow(combinedName, 0);
+        });
     });
 
-    // SKU 테이블에 행(row) 추가
+        // N개의 배열을 조합하는 재귀 함수
+        function generatePowerSet(options) {
+            var results = [];
+
+            function helper(idx, currentName) {
+                if (idx === options.length) {
+                    results.push(currentName);
+                    return;
+                }
+
+                var option = options[idx];
+                option.values.forEach(function(val) {
+                    var nextName = currentName;
+                    if (nextName !== "") nextName += " / ";
+                    nextName += (option.name ? option.name + ": " : "") + val;
+                    
+                    helper(idx + 1, nextName);
+                });
+            }
+
+            helper(0, "");
+            return results;
+        }
+
+    //테이블에 행 추가
     function addSkuRow(name, stock) {
         var html = '<tr>' +
             '<td>' +
@@ -62,15 +100,14 @@ $(function() {
         skuIndex++;
     }
 
-    // SKU 행 삭제 버튼
+    //행 삭제 버튼
     $("#sku-table-body").on("click", ".btn-delete-sku", function() {
         if(confirm("이 옵션 조합을 삭제하시겠습니까?")) {
             $(this).closest("tr").remove();
-            // (참고) 인덱스(skuIndex)를 재정렬할 필요는 없음. 서버는 받는 대로 처리함.
         }
     });
 
-    // ✅ 색상/사이즈 선택 팝업 함수
+    //색상/사이즈 선택 팝업 함수
     function promptSelectOption(current) {
         var options = ["색상", "사이즈"];
         var msg = "옵션 이름 선택 (현재: " + current + ")\n";
@@ -96,55 +133,32 @@ $(function() {
 </style>
 
 <div class="container w-800">
-    <h1>"${product.productName}" - 옵션 조합(SKU) 관리</h1>
+    <h1>"${product.productName}" - 옵션 관리</h1>
 
-    <!-- 1. 옵션 정의 섹션 -->
     <div class="option-group">
-        <h3>옵션 조합 생성</h3>
-        <p class="gray">옵션 값은 콤마(,)로 구분하여 입력하세요.</p>
-        <div class="cell flex-box" style="gap: 10px;">
-            <input type="text" id="option1-name" class="field" placeholder="옵션 1 이름 (예: 색상)">
-            <input type="text" id="option1-values" class="field flex-fill" placeholder="옵션 1 값 (예: 빨강, 파랑, 검정)">
+        <div class="flex-box" style="justify-content: space-between; align-items: center;">
+            <h3>옵션 조합 정의</h3>
+            <button type="button" id="btn-add-option-item" class="btn btn-neutral btn-sm">+ 항목 추가</button>
         </div>
-        <div class="cell flex-box" style="gap: 10px;">
-            <input type="text" id="option2-name" class="field" placeholder="옵션 2 이름 (예: 사이즈)">
-            <input type="text" id="option2-values" class="field flex-fill" placeholder="옵션 2 값 (예: S, M, L)">
+        <p class="gray">옵션 값은 콤마(,)로 구분하세요.</p>
+        
+        <div id="option-definition-container">
+            <div class="option-item cell flex-box mt-10" style="gap: 10px;">
+                <input type="text" class="field opt-name" placeholder="옵션 이름 (예: 색상)">
+                <input type="text" class="field flex-fill opt-values" placeholder="옵션 값 (예: 빨강, 파랑)">
+            </div>
         </div>
-        <button type="button" id="generate-sku-btn" class="btn btn-neutral">조합 생성하기</button>
+        
+        <button type="button" id="generate-sku-btn" class="btn btn-neutral w-100 mt-15">조합 생성하기</button>
     </div>
 
-    <!-- 2. SKU 등록 폼 -->
     <form action="save" method="post">
         <input type="hidden" name="productNo" value="${product.productNo}">
-        
-        <h3>생성된 SKU 목록</h3>
         <table id="sku-table" class="table table-border w-100">
-            <thead>
-                <tr>
-                    <th>옵션 조합 이름 (optionName)</th>
-                    <th>재고 (optionStock)</th>
-                    <th>삭제</th>
-                </tr>
-            </thead>
             <tbody id="sku-table-body">
-                <%-- 기존에 저장된 SKU 목록 (수정용) --%>
-                <c:forEach var="opt" items="${optionList}" varStatus="status">
-                    <tr>
-                        <td>
-                            <input type="text" name="optionList[${status.index}].optionName" class="field" value="${opt.optionName}" readonly>
-                        </td>
-                        <td>
-                            <input type="number" name="optionList[${status.index}].optionStock" class="field" value="${opt.optionStock}" min="0">
-                        </td>
-                        <td>
-                            <span class="btn-delete-sku"><i class="fa-solid fa-trash"></i></span>
-                        </td>
-                    </tr>
-                </c:forEach>
-            </tbody>
+                </tbody>
         </table>
-        
-        <button type="submit" class="btn btn-positive w-100 mt-20">전체 SKU 저장하기</button>
+        <button type="submit" class="btn btn-positive w-100 mt-20 mb-40">전체 SKU 저장하기</button>
     </form>
 </div>
 
