@@ -123,22 +123,26 @@ CREATE SEQUENCE review_seq;
 CREATE TABLE orders (
     orders_no NUMBER PRIMARY KEY,
     orders_id VARCHAR2(20),
-    orders_totalPrice NUMBER,
-    orders_recipient VARCHAR2(60),
-    orders_recipientContact CHAR(11),
-    orders_shippingPost VARCHAR2(6),
-    orders_shippingAddress1 VARCHAR2(300),
-    orders_shippingAddress2 VARCHAR2(300),
-    orders_status VARCHAR2(60),
-    CONSTRAINT fk_orders_member FOREIGN KEY (orders_id) 
-        REFERENCES member(member_id),
-        
-    check(orders_totalPrice >= 0),
-    check(regexp_like(orders_recipientContact, '^010[1-9][0-9]{7}$')),
-    check(regexp_like(orders_shippingPost, '^[0-9]{5,6}$')),
+    orders_totalprice NUMBER NOT NULL,
+    orders_recipient VARCHAR2(60) NOT NULL,
+    orders_recipientcontact CHAR(11) NOT NULL,
+    orders_shippingpost VARCHAR2(6) NOT NULL,
+    orders_shippingaddress1 VARCHAR2(300) NOT NULL,
+    orders_shippingaddress2 VARCHAR2(300) NOT NULL,
+    orders_status VARCHAR2(60) NOT NULL,
+    orders_created_at TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
+    -- 결제 관련 추가 컬럼
+    orders_tid VARCHAR2(50),             -- 카카오페이 거래 번호
+    orders_item_name VARCHAR2(300),      -- 대표 결제 상품명
+    orders_remain_price NUMBER DEFAULT 0,-- 취소 가능 잔액 (부분 취소용)
+
+    CONSTRAINT fk_orders_member FOREIGN KEY (orders_id) REFERENCES member(member_id),
+    check(orders_totalprice >= 0),
+    check(orders_remain_price >= 0),
+    check(regexp_like(orders_recipientcontact, '^010[1-9][0-9]{7}$')),
+    check(regexp_like(orders_shippingpost, '^[0-9]{5,6}$')),
     check(orders_status in ('결제완료', '배송준비중', '배송중', '배송완료', '주문취소', '반품완료', '취소요청', '반품요청'))
 );
-
 CREATE SEQUENCE orders_seq;
 ```
 
@@ -208,15 +212,14 @@ CREATE TABLE order_detail (
     option_no NUMBER NOT NULL,
     amount NUMBER DEFAULT 1 NOT NULL,
     price_per_item NUMBER NOT NULL,
-    CONSTRAINT fk_detail_order FOREIGN KEY (order_no) 
-        REFERENCES orders(orders_no),
-    CONSTRAINT fk_detail_product FOREIGN KEY (product_no) 
-        REFERENCES product(product_no),
-    CONSTRAINT fk_detail_option FOREIGN KEY (option_no) 
-        REFERENCES product_option(option_no),
-        
+    detail_status VARCHAR2(20) DEFAULT '결제완료' NOT NULL, -- 상품별 상태
+    
+    CONSTRAINT fk_detail_order FOREIGN KEY (order_no) REFERENCES orders(orders_no),
+    CONSTRAINT fk_detail_product FOREIGN KEY (product_no) REFERENCES product(product_no),
+    CONSTRAINT fk_detail_option FOREIGN KEY (option_no) REFERENCES product_option(option_no),
     check(amount > 0),
-    check(price_per_item >= 0)
+    check(price_per_item >= 0),
+    check(detail_status in ('결제완료', '취소완료'))
 );
 CREATE SEQUENCE order_detail_seq;
 ```
