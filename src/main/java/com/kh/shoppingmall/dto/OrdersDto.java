@@ -1,0 +1,23 @@
+package com.kh.shoppingmall.dto;
+
+import java.sql.Timestamp;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data @AllArgsConstructor @NoArgsConstructor @Builder
+public class OrdersDto {
+    private int ordersNo;
+    private String ordersId;
+    private int ordersTotalPrice;
+    private String ordersRecipient;
+    private String ordersRecipientContact;
+    private String ordersShippingPost, ordersShippingAddress1, ordersShippingAddress2;
+    private String ordersStatus;
+    private Timestamp ordersCreatedAt;
+    
+    //체크박스 값 받는 필드
+    private boolean saveAddressAsDefault;
+}
