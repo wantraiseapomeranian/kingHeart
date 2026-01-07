@@ -9,10 +9,10 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.kh</groupId>
-	<artifactId>semi-shoppingmall</artifactId>
+	<artifactId>KingHeart</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<packaging>war</packaging>
-	<name>semi-shoppingmall</name>
+	<name>KingHeart</name>
 	<description>Demo project for Spring Boot</description>
 	<url/>
 	<licenses>
