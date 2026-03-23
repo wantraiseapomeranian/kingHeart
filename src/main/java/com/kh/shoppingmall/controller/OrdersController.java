@@ -1,13 +1,7 @@
 package com.kh.shoppingmall.controller;
 
-import java.time.DayOfWeek;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Locale;
-import java.util.UUID;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -24,37 +18,31 @@ import com.kh.shoppingmall.dto.MemberDto;
 import com.kh.shoppingmall.dto.OrdersDto;
 import com.kh.shoppingmall.service.CartService;
 import com.kh.shoppingmall.service.KakaoPayService;
-import com.kh.shoppingmall.service.OrdersService;
+import com.kh.shoppingmall.domain.order.service.OrderService;
 import com.kh.shoppingmall.service.WishlistService;
 import com.kh.shoppingmall.vo.CartDetailVO;
 import com.kh.shoppingmall.vo.OrderListVO;
 import com.kh.shoppingmall.vo.OrdersSummaryVO;
 import com.kh.shoppingmall.vo.WishlistDetailVO;
 import com.kh.shoppingmall.vo.kakaopay.KakaoPayApproveRequestVO;
-import com.kh.shoppingmall.vo.kakaopay.KakaoPayReadyRequestVO;
 import com.kh.shoppingmall.vo.kakaopay.KakaoPayReadyResponseVO;
 
 import jakarta.servlet.http.HttpSession;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @CrossOrigin
 @Controller
 @RequestMapping("/orders")
+@RequiredArgsConstructor
 public class OrdersController {
 
-	@Autowired
-	private MemberDao memberDao;
-
-	@Autowired
-	private WishlistService wishlistService;
-	
-	@Autowired
-	private OrdersService ordersService;
-	
-	@Autowired
-	private CartService cartService;
-	
-	@Autowired
-    private KakaoPayService kakaoPayService;
+	private final MemberDao memberDao;
+	private final WishlistService wishlistService;
+	private final OrderService orderService;
+	private final CartService cartService;
+	private final KakaoPayService kakaoPayService;
 
 	// 위시리스트 페이지
 	@GetMapping("/wishlist")
@@ -74,32 +62,13 @@ public class OrdersController {
 	@GetMapping("/cart")
 	public String cart(HttpSession session, Model model) {
 		String memberId = (String) session.getAttribute("loginId");
+		if (memberId == null) return "redirect:/member/login";
 
-		// 로그인 확인
-		if (memberId == null) {
-			return "redirect:/member/login";
-		}
 		List<CartDetailVO> cartlist = cartService.getCartItems(memberId);
-		model.addAttribute("cartlist", cartlist); // 조회 결과를 모델에 추가
+		model.addAttribute("cartlist", cartlist); 
 		
 		//도착 예정일 계산 로직
-		LocalDate today = LocalDate.now(); //오늘 날짜
-	    LocalDate estimatedDate = today.plusDays(4); //4일 더하기
-
-	    DayOfWeek dayOfWeek = estimatedDate.getDayOfWeek(); //요일 구하기
-
-	    //주말 조정
-	    if (dayOfWeek == DayOfWeek.SATURDAY) { // 토요일이면 +2일
-	        estimatedDate = estimatedDate.plusDays(2);
-	    } else if (dayOfWeek == DayOfWeek.SUNDAY) { // 일요일이면 +1일
-	        estimatedDate = estimatedDate.plusDays(1);
-	    }
-
-	    //날짜 포맷
-	    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM월 dd일(E)", Locale.KOREAN);
-	    String formattedDeliveryDate = estimatedDate.format(formatter);
-
-	    //모델에 추가
+		String formattedDeliveryDate = orderService.calculateEstimatedDeliveryDate();
 	    model.addAttribute("estimatedDeliveryDate", formattedDeliveryDate);
 	    
 		return "/WEB-INF/views/orders/cart.jsp";
@@ -110,20 +79,20 @@ public class OrdersController {
 	public String payment(HttpSession session, Model model) {
 		String memberId = (String) session.getAttribute("loginId");
 
-		// 로그인 확인
+		//로그인 확인
 		if (memberId == null)
 			return "redirect:/member/login";
 
-		// 장바구니 정보 조회
+		//장바구니 정보 조회
 		List<CartDetailVO> cartItems = cartService.getCartItems(memberId);
 		model.addAttribute("cartItems", cartItems);
 
-		// 회원 정보 조회
+		//회원 정보 조회
 		MemberDto memberDto = memberDao.selectOne(memberId);
 		model.addAttribute("memberDto", memberDto);
 
-		// 총 주문 금액 계산
-		int totalPrice = ordersService.calculateTotalPrice(cartItems);
+		//총 주문 금액 계산
+		int totalPrice = orderService.calculateTotalPrice(cartItems);
 		model.addAttribute("totalPrice", totalPrice);
 
 		return "/WEB-INF/views/orders/payment.jsp";
@@ -133,30 +102,16 @@ public class OrdersController {
 	public String payment(HttpSession session, @ModelAttribute OrdersDto ordersDto) {
 		String memberId = (String) session.getAttribute("loginId");
 
-		// 현재 장바구니 정보 가져오기
 		List<CartDetailVO> cartItems = cartService.getCartItems(memberId);
-		if (cartItems.isEmpty()) { // 장바구니 비어있으면 주문 불가
-			// 에러 메시지와 함께 리다이렉트 또는 다른 처리
+		if (cartItems.isEmpty()) { 
 			return "redirect:/orders/cart?error=empty";
 		}
+		
+		//고유 주문번호 생성
+		String partnerOrderId = java.util.UUID.randomUUID().toString();
 
-		//카카오페이 준비 요청을 위한 데이터 설정
-		String partnerOrderId = UUID.randomUUID().toString(); // 고유 주문번호 생성
-		String itemName = cartItems.get(0).getProductName();
-		if (cartItems.size() > 1) {
-			itemName += " 외 " + (cartItems.size() - 1) + "건";
-		}
-		int totalPrice = ordersService.calculateTotalPrice(cartItems);
-
-		KakaoPayReadyRequestVO readyRequest = KakaoPayReadyRequestVO.builder()
-					.partnerOrderId(partnerOrderId)
-					.partnerUserId(memberId)
-					.itemName(itemName)
-					.totalAmount(totalPrice)
-					.build();
-
-		//카카오페이 준비 API 호출
-		KakaoPayReadyResponseVO response = kakaoPayService.ready(readyRequest);
+		//ResponseVO 받아오기
+		KakaoPayReadyResponseVO response = kakaoPayService.readyForCartItems(partnerOrderId, memberId, cartItems);
 
 		//승인 단계에서 사용할 정보들을 세션에 임시 보관
 		session.setAttribute("approve", KakaoPayApproveRequestVO.builder()
@@ -165,19 +120,15 @@ public class OrdersController {
 				.partnerUserId(memberId)
 			.build());
 				
-		//사용자가 입력한 배송지 정보(OrdersDto)도 세션에 보관
 		session.setAttribute("ordersDto", ordersDto);
 
-		//카카오페이 결제 페이지로 리다이렉트
 		return "redirect:" + response.getNextRedirectPcUrl();
 	}
 	
 	@GetMapping("/payment/success/{partnerOrderId}")
 	public String paymentSuccess(
-			@PathVariable String partnerOrderId, @RequestParam String pg_token, HttpSession session
-						) {
+			@PathVariable String partnerOrderId, @RequestParam String pg_token, HttpSession session) {
 		
-		//세션에서 저장해둔 정보 꺼내기
 		KakaoPayApproveRequestVO approveRequest = (KakaoPayApproveRequestVO) session.getAttribute("approve");
 		OrdersDto ordersDto = (OrdersDto) session.getAttribute("ordersDto");
 		String memberId = (String) session.getAttribute("loginId");
@@ -186,16 +137,12 @@ public class OrdersController {
 			return "redirect:/orders/cart?error=session_expired";
 		}
 
-		//승인 요청에 토큰 추가
 		approveRequest.setPgToken(pg_token);
-
-		//장바구니 다시 조회
 		List<CartDetailVO> cartItems = cartService.getCartItems(memberId);
 
-		//통합된 createOrders 호출
-		int ordersNo = ordersService.createOrders(approveRequest, ordersDto, cartItems, session);
+		//주문번호 가져오기
+		int ordersNo = orderService.createOrders(approveRequest, ordersDto, cartItems, session);
 
-		// 세션 정리
 		session.removeAttribute("approve");
 		session.removeAttribute("ordersDto");
 
@@ -225,8 +172,8 @@ public class OrdersController {
 		if (memberId == null)
 			return "redirect:/member/login";
 
-		// 주문 정보 조회 (Service는 List<OrdersSummaryVO>를 반환)
-		List<OrdersSummaryVO> orderSummaryList = ordersService.getOrderSummary(ordersNo); // 변수명 변경 (List임을 명시)
+		// 주문 정보 조회
+		List<OrdersSummaryVO> orderSummaryList = orderService.getOrderSummary(ordersNo); // 변수명 변경 (List임을 명시)
 
 		// 본인 주문 확인 + 주문 존재 확인
 		if (orderSummaryList == null || orderSummaryList.isEmpty()
@@ -250,8 +197,8 @@ public class OrdersController {
 		if (memberId == null)
 			return "redirect:/member/login";
 
-		// 주문 내역 목록 조회 (OrdersService에 메소드 필요)
-		List<OrderListVO> orderList = ordersService.getOrderListSummaryByMember(memberId); // 예시 메소드명, Dto 또는 VO 사용
+		// 주문 내역 목록 조회
+		List<OrderListVO> orderList = orderService.getOrderListSummaryByMember(memberId); // 예시 메소드명, Dto 또는 VO 사용
 		model.addAttribute("orderList", orderList);
 
 		return "/WEB-INF/views/orders/list.jsp";
@@ -266,7 +213,7 @@ public class OrdersController {
 		if (memberId == null)
 			return "redirect:/member/login";
 		
-		List<OrdersSummaryVO> orderSummaryList = ordersService.getOrderSummary(ordersNo);
+		List<OrdersSummaryVO> orderSummaryList = orderService.getOrderSummary(ordersNo);
 		if (orderSummaryList == null || orderSummaryList.isEmpty()
 				|| !orderSummaryList.get(0).getOrdersId().equals(memberId)) {
 			// 오류 처리 또는 리다이렉트
@@ -289,7 +236,7 @@ public class OrdersController {
 	    }
 
 	    try {
-	        boolean success = ordersService.cancelOrder(ordersNo, memberId); // Service 호출
+	        boolean success = orderService.cancelOrder(ordersNo, memberId); // Service 호출
 	        if (success) {
 	            redirectAttributes.addFlashAttribute("message", "주문이 정상적으로 취소되었습니다.");
 	        } else {
@@ -318,7 +265,7 @@ public class OrdersController {
 
 	    try {
 	        // 서비스의 부분 취소 로직 호출
-	        boolean success = ordersService.cancelOrderDetail(orderDetailNo, memberId);
+	        boolean success = orderService.cancelOrderDetail(orderDetailNo, memberId);
 	        
 	        if (success) {
 	            redirectAttributes.addFlashAttribute("message", "선택하신 상품이 취소되었습니다.");

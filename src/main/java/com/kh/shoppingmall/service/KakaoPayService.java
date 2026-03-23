@@ -1,6 +1,7 @@
 package com.kh.shoppingmall.service;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,6 +11,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import com.kh.shoppingmall.configuration.KakaoPayProperties;
+import com.kh.shoppingmall.vo.CartDetailVO;
 import com.kh.shoppingmall.vo.kakaopay.KakaoPayApproveRequestVO;
 import com.kh.shoppingmall.vo.kakaopay.KakaoPayApproveResponseVO;
 import com.kh.shoppingmall.vo.kakaopay.KakaoPayCancelRequestVO;
@@ -113,6 +115,26 @@ public class KakaoPayService {
 				.block();//동기적으로 변환하여 응답이 올때까지 기다려라! (RestTemplate과 같아짐)
 		
 		return response;
+	}
+	
+	public KakaoPayReadyResponseVO readyForCartItems(String partnerOrderId, String memberId, List<CartDetailVO> cartItems) {
+        String itemName = cartItems.get(0).getProductName();
+        if (cartItems.size() > 1) {
+            itemName += " 외 " + (cartItems.size() - 1) + "건";
+        }
+        
+        int totalPrice = cartItems.stream()
+                .mapToInt(item -> item.getProductPrice() * item.getCartAmount())
+                .sum();
+
+        KakaoPayReadyRequestVO readyRequest = KakaoPayReadyRequestVO.builder()
+                .partnerOrderId(partnerOrderId)
+                .partnerUserId(memberId)
+                .itemName(itemName)
+                .totalAmount(totalPrice)
+               .build();
+        
+        return this.ready(readyRequest);
 	}
 }
 

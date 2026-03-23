@@ -299,4 +299,20 @@ public class OrdersService {
 	    }
 	    return false;
 	}
+	
+	//배송일 계산 로직
+	public String calculateEstimatedDeliveryDate() {
+		java.time.LocalDate today = java.time.LocalDate.now(); 
+        java.time.LocalDate estimatedDate = today.plusDays(4); 
+        java.time.DayOfWeek dayOfWeek = estimatedDate.getDayOfWeek(); 
+
+        if (dayOfWeek == java.time.DayOfWeek.SATURDAY) { 
+            estimatedDate = estimatedDate.plusDays(2);
+        } else if (dayOfWeek == java.time.DayOfWeek.SUNDAY) { 
+            estimatedDate = estimatedDate.plusDays(1);
+        }
+
+        java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("MM월 dd일(E)", java.util.Locale.KOREAN);
+        return estimatedDate.format(formatter);
+	}
 }
